@@ -160,6 +160,12 @@ function handleEntryTypeChange() {
     document.getElementById('sharedUrl').required = false;
     document.getElementById('notebookUrl').required = true;
   }
+
+  // Update submit button text based on entry type
+  const submitBtn = document.getElementById('submitBtn');
+  if (submitBtn) {
+    submitBtn.textContent = entryType === 'gem' ? 'Save Gem' : 'Save Notebook';
+  }
 }
 
 /**
