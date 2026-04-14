@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gem and Notebook Catalog</title>
+  <title>Gemini Gems and Notebooks Catalog</title>
   <?!= include('Styles'); ?>
 </head>
 <body>
   <!-- Header -->
   <header class="app-header">
     <div class="header-content">
-      <h1>Gem and Notebook Catalog</h1>
+      <h1>Gemini Gems and Notebooks Catalog</h1>
       <div class="header-buttons">
         <button id="addGemBtn" class="btn btn-primary">+ Add New Item</button>
         <button id="adminSettingsBtn" class="btn btn-secondary" style="display: none;">⚙ Admin Settings</button>
@@ -33,6 +33,24 @@
       <h2>No items yet</h2>
       <p>Start building your team's catalog by adding your first gem or notebook!</p>
       <button id="addFirstGemBtn" class="btn btn-primary">+ Add Your First Item</button>
+    </div>
+
+    <!-- Filter Controls -->
+    <div id="filterControls" class="filter-controls" style="display: none;">
+      <div class="filter-buttons">
+        <button id="filterAll" class="filter-btn filter-btn-active" data-filter="all">
+          All Items
+        </button>
+        <button id="filterGems" class="filter-btn" data-filter="gem">
+          Gems Only
+        </button>
+        <button id="filterNotebooks" class="filter-btn" data-filter="notebook">
+          Notebooks Only
+        </button>
+      </div>
+      <div class="filter-count" id="filterCount">
+        Showing <span id="filteredCount">0</span> of <span id="totalCount">0</span> items
+      </div>
     </div>
 
     <!-- Gems Grid -->
@@ -161,7 +179,7 @@
       </div>
       <div style="padding: 1.5rem;">
         <h3 style="margin-bottom: 1rem;">Admin Users</h3>
-        <p style="color: var(--gray-700); margin-bottom: 1rem; font-size: 0.875rem;">
+        <p style="color: var(--rh-gray-700); margin-bottom: 1rem; font-size: 0.875rem;">
           Users listed below can delete entries from the catalog.
         </p>
 

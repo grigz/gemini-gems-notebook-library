@@ -16,9 +16,6 @@ const COL_LAST_EDITED_DATE = 8;
 const COL_FILES = 9;
 const COL_ENTRY_TYPE = 10;
 
-// Google Sheet ID - Replace with your own Google Sheet ID
-const SHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE';
-
 /**
  * Get the spreadsheet object
  * @return {Sheet} The active sheet

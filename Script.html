@@ -7,6 +7,7 @@
 // Global variables
 let currentUser = null;
 let allGems = [];
+let currentFilter = 'all'; // 'all', 'gem', 'notebook'
 let fileRowCount = 0;
 let formIsDirty = false;
 
@@ -14,7 +15,7 @@ let formIsDirty = false;
  * Initialize the application
  */
 function init() {
-  console.log('Initializing Gem and Notebook Catalog...');
+  console.log('Initializing Gemini Gems and Notebooks Catalog...');
 
   // Get current user with permissions
   google.script.run
@@ -80,6 +81,11 @@ function init() {
   if (addAdminBtn) {
     addAdminBtn.addEventListener('click', addAdminUser);
   }
+
+  // Filter button event listeners
+  document.getElementById('filterAll').addEventListener('click', () => setFilter('all'));
+  document.getElementById('filterGems').addEventListener('click', () => setFilter('gem'));
+  document.getElementById('filterNotebooks').addEventListener('click', () => setFilter('notebook'));
 
   // Event delegation for gem card buttons and admin list
   document.addEventListener('click', function(e) {
@@ -272,7 +278,15 @@ function loadGems() {
       if (response.success) {
         allGems = response.data;
         console.log('Loaded', allGems.length, 'gems');
-        renderGems(allGems);
+        // Reset filter to 'all' when loading fresh data
+        currentFilter = 'all';
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+          btn.classList.remove('filter-btn-active');
+        });
+        document.getElementById('filterAll').classList.add('filter-btn-active');
+
+        const filteredGems = getFilteredGems();
+        renderGems(filteredGems);
       } else {
         showError('Failed to load gems: ' + response.error);
       }
@@ -290,15 +304,73 @@ function loadGems() {
 function renderGems(gems) {
   const gemsGrid = document.getElementById('gemsGrid');
   const emptyState = document.getElementById('emptyState');
+  const filterControls = document.getElementById('filterControls');
 
-  if (!gems || gems.length === 0) {
+  if (!allGems || allGems.length === 0) {
+    // No items at all - hide everything
     gemsGrid.innerHTML = '';
     emptyState.style.display = 'block';
+    filterControls.style.display = 'none';
+    return;
+  }
+
+  // Have items, show filter controls
+  filterControls.style.display = 'flex';
+  updateFilterCount();
+
+  if (!gems || gems.length === 0) {
+    // Filtered to zero items
+    gemsGrid.innerHTML = '<div class="no-results">No items match this filter. Try selecting a different filter.</div>';
+    emptyState.style.display = 'none';
     return;
   }
 
   emptyState.style.display = 'none';
   gemsGrid.innerHTML = gems.map(gem => createGemCard(gem)).join('');
+}
+
+/**
+ * Get filtered gems based on current filter
+ */
+function getFilteredGems() {
+  if (currentFilter === 'all') {
+    return allGems;
+  }
+  return allGems.filter(gem => {
+    const entryType = gem.entryType || 'gem';
+    return entryType === currentFilter;
+  });
+}
+
+/**
+ * Set current filter and re-render
+ */
+function setFilter(filter) {
+  currentFilter = filter;
+
+  // Update button states
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.remove('filter-btn-active');
+  });
+
+  const activeBtn = document.querySelector('.filter-btn[data-filter="' + filter + '"]');
+  if (activeBtn) {
+    activeBtn.classList.add('filter-btn-active');
+  }
+
+  // Re-render with filtered data
+  const filteredGems = getFilteredGems();
+  renderGems(filteredGems);
+  updateFilterCount();
+}
+
+/**
+ * Update filter count display
+ */
+function updateFilterCount() {
+  const filteredGems = getFilteredGems();
+  document.getElementById('filteredCount').textContent = filteredGems.length;
+  document.getElementById('totalCount').textContent = allGems.length;
 }
 
 /**
@@ -737,7 +809,7 @@ function exportAsCSV() {
   });
 
   const csv = [headers.join(','), ...rows].join('\n');
-  downloadFile(csv, 'gem-catalog.csv', 'text/csv');
+  downloadFile(csv, 'gemini-gems-catalog.csv', 'text/csv');
   showSuccess('Gems exported as CSV');
 }
 
@@ -751,7 +823,7 @@ function exportAsJSON() {
   }
 
   const json = JSON.stringify(allGems, null, 2);
-  downloadFile(json, 'gem-catalog.json', 'application/json');
+  downloadFile(json, 'gemini-gems-catalog.json', 'application/json');
   showSuccess('Gems exported as JSON');
 }
 
@@ -823,7 +895,7 @@ function renderAdminList(adminList) {
   const container = document.getElementById('adminListContainer');
 
   if (!adminList || adminList.length === 0) {
-    container.innerHTML = '<p style="color: var(--gray-500); font-style: italic;">No admins configured</p>';
+    container.innerHTML = '<p style="color: var(--rh-gray-500); font-style: italic;">No admins configured</p>';
     return;
   }
 
@@ -833,7 +905,7 @@ function renderAdminList(adminList) {
     html += '<li class="admin-list-item">';
     html += '<span>' + escapeHtml(email);
     if (isCurrentUser) {
-      html += ' <span style="color: var(--primary-color); font-size: 0.875rem;">(you)</span>';
+      html += ' <span style="color: var(--rh-teal); font-size: 0.875rem;">(you)</span>';
     }
     html += '</span>';
 
