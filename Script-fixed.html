@@ -1,0 +1,643 @@
+<script>
+/**
+ * Script.html - Client-Side JavaScript
+ * User interactions and server communication
+ */
+
+// Global variables
+let currentUser = null;
+let allGems = [];
+let fileRowCount = 0;
+let formIsDirty = false;
+
+/**
+ * Initialize the application
+ */
+function init() {
+  console.log('Initializing HPBU PMM Gemini Gems Catalog...');
+
+  // Get current user
+  google.script.run
+    .withSuccessHandler(function(user) {
+      currentUser = user;
+      console.log('Current user:', currentUser.email);
+      loadGems();
+    })
+    .withFailureHandler(handleError)
+    .getCurrentUser();
+
+  // Set up event listeners
+  document.getElementById('addGemBtn').addEventListener('click', openAddModal);
+  document.getElementById('addFirstGemBtn').addEventListener('click', openAddModal);
+  document.getElementById('exportCsvBtn').addEventListener('click', exportAsCSV);
+  document.getElementById('exportJsonBtn').addEventListener('click', exportAsJSON);
+  document.getElementById('modalBackdrop').addEventListener('click', closeModal);
+  document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+  document.getElementById('cancelBtn').addEventListener('click', closeModal);
+  document.getElementById('addFileBtn').addEventListener('click', function() { addFileRow(); });
+  document.getElementById('gemForm').addEventListener('submit', handleSubmit);
+  document.getElementById('shortDescription').addEventListener('input', updateCharCount);
+
+  // Track form changes
+  const formInputs = document.querySelectorAll('#gemForm input, #gemForm textarea');
+  formInputs.forEach(function(input) {
+    input.addEventListener('input', markFormDirty);
+  });
+
+  // Close modal on escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('gemModal').style.display !== 'none') {
+      closeModal();
+    }
+  });
+
+  // Event delegation for gem card buttons
+  document.addEventListener('click', function(e) {
+    // Toggle prompt button
+    if (e.target.closest('.toggle-prompt-btn')) {
+      const gemId = parseInt(e.target.closest('.toggle-prompt-btn').dataset.gemId);
+      togglePrompt(gemId);
+    }
+
+    // Try gem button
+    if (e.target.closest('.try-gem-btn')) {
+      const gemId = parseInt(e.target.closest('.try-gem-btn').dataset.gemId);
+      const gem = allGems.find(function(g) { return g.id === gemId; });
+      if (gem) {
+        openGemUrl(gem.sharedUrl);
+      }
+    }
+
+    // Edit gem button
+    if (e.target.closest('.edit-gem-btn')) {
+      const gemId = parseInt(e.target.closest('.edit-gem-btn').dataset.gemId);
+      editGemById(gemId);
+    }
+
+    // Delete gem button
+    if (e.target.closest('.delete-gem-btn')) {
+      const gemId = parseInt(e.target.closest('.delete-gem-btn').dataset.gemId);
+      const gem = allGems.find(function(g) { return g.id === gemId; });
+      if (gem) {
+        confirmDelete(gemId, gem.title);
+      }
+    }
+  });
+}
+
+/**
+ * Update character count for short description
+ */
+function updateCharCount() {
+  const textarea = document.getElementById('shortDescription');
+  const count = document.getElementById('descCharCount');
+  count.textContent = textarea.value.length;
+}
+
+/**
+ * Add a file input row
+ */
+function addFileRow(name, link) {
+  name = name || '';
+  link = link || '';
+
+  if (fileRowCount >= 10) {
+    showError('Maximum 10 files allowed per gem');
+    return;
+  }
+
+  fileRowCount++;
+  const container = document.getElementById('filesContainer');
+  const rowId = 'file-row-' + fileRowCount;
+
+  const row = document.createElement('div');
+  row.className = 'file-row';
+  row.id = rowId;
+
+  const escapedName = name ? escapeHtml(name) : '';
+  const escapedLink = link ? escapeHtml(link) : '';
+
+  row.innerHTML = '<input type="text" class="file-name" placeholder="File name" value="' + escapedName + '">' +
+    '<input type="url" class="file-link" placeholder="https://..." value="' + escapedLink + '">' +
+    '<button type="button" class="btn btn-danger btn-small file-remove-btn">×</button>';
+
+  container.appendChild(row);
+
+  // Add input listeners to track changes
+  const inputs = row.querySelectorAll('input');
+  inputs.forEach(function(input) {
+    input.addEventListener('input', markFormDirty);
+  });
+
+  // Add remove button listener
+  const removeBtn = row.querySelector('.file-remove-btn');
+  removeBtn.addEventListener('click', function() {
+    removeFileRow(rowId);
+  });
+
+  updateAddFileButton();
+}
+
+/**
+ * Remove a file input row
+ */
+function removeFileRow(rowId) {
+  const row = document.getElementById(rowId);
+  if (row) {
+    row.remove();
+    fileRowCount--;
+    updateAddFileButton();
+    markFormDirty();
+  }
+}
+
+/**
+ * Update Add File button visibility
+ */
+function updateAddFileButton() {
+  const btn = document.getElementById('addFileBtn');
+  btn.style.display = fileRowCount >= 10 ? 'none' : 'inline-flex';
+}
+
+/**
+ * Clear all file rows
+ */
+function clearFileRows() {
+  document.getElementById('filesContainer').innerHTML = '';
+  fileRowCount = 0;
+  updateAddFileButton();
+}
+
+/**
+ * Collect files data from form
+ */
+function collectFilesData() {
+  const files = [];
+  const rows = document.querySelectorAll('.file-row');
+
+  rows.forEach(function(row) {
+    const name = row.querySelector('.file-name').value.trim();
+    const link = row.querySelector('.file-link').value.trim();
+
+    if (name && link) {
+      files.push({ name: name, link: link });
+    }
+  });
+
+  return files;
+}
+
+/**
+ * Load all gems from the server
+ */
+function loadGems() {
+  showLoading();
+  console.log('Loading gems...');
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      hideLoading();
+      if (response.success) {
+        allGems = response.data;
+        console.log('Loaded', allGems.length, 'gems');
+        renderGems(allGems);
+      } else {
+        showError('Failed to load gems: ' + response.error);
+      }
+    })
+    .withFailureHandler(function(error) {
+      hideLoading();
+      handleError(error);
+    })
+    .getAllGems();
+}
+
+/**
+ * Render all gems to the grid
+ */
+function renderGems(gems) {
+  const gemsGrid = document.getElementById('gemsGrid');
+  const emptyState = document.getElementById('emptyState');
+
+  if (!gems || gems.length === 0) {
+    gemsGrid.innerHTML = '';
+    emptyState.style.display = 'block';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  gemsGrid.innerHTML = gems.map(function(gem) { return createGemCard(gem); }).join('');
+}
+
+/**
+ * Create HTML for a single gem card
+ */
+function createGemCard(gem) {
+  const createdDate = new Date(gem.createdDate).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+
+  // Build files HTML
+  let filesHtml = '';
+  if (gem.files && gem.files.length > 0) {
+    const fileItems = gem.files.map(function(file) {
+      return '<li><a href="' + escapeHtml(file.link) + '" target="_blank">' + escapeHtml(file.name) + '</a></li>';
+    }).join('');
+    filesHtml = '<div class="files-display"><h4>Files Used:</h4><ul class="files-list">' + fileItems + '</ul></div>';
+  }
+
+  // Build card HTML using string concatenation
+  let html = '<div class="gem-card" data-gem-id="' + gem.id + '">';
+  html += '<div class="gem-card-header">';
+  html += '<h3 class="gem-card-title">' + escapeHtml(gem.title) + '</h3>';
+  html += '<span class="gem-version-badge">' + escapeHtml(gem.version) + '</span>';
+  html += '</div>';
+  html += '<div class="gem-meta">Created by ' + escapeHtml(gem.createdBy) + ' on ' + createdDate + '</div>';
+  html += '<p class="gem-description">' + escapeHtml(gem.shortDescription) + '</p>';
+  html += '<div class="gem-prompt" id="prompt-' + gem.id + '">';
+  html += '<pre>' + escapeHtml(gem.fullPrompt) + '</pre>';
+  html += filesHtml;
+  html += '</div>';
+  html += '<div class="gem-actions">';
+  html += '<button class="btn btn-secondary btn-small toggle-prompt-btn" data-gem-id="' + gem.id + '">';
+  html += '<span id="toggle-text-' + gem.id + '">Show Full Prompt</span>';
+  html += '</button>';
+  html += '<button class="btn btn-primary btn-small try-gem-btn" data-gem-id="' + gem.id + '">Try Now</button>';
+  html += '<button class="btn btn-secondary btn-small edit-gem-btn" data-gem-id="' + gem.id + '">Edit</button>';
+  html += '<button class="btn btn-danger btn-small delete-gem-btn" data-gem-id="' + gem.id + '">Delete</button>';
+  html += '</div>';
+  html += '</div>';
+
+  return html;
+}
+
+/**
+ * Toggle full prompt visibility
+ */
+function togglePrompt(gemId) {
+  const promptDiv = document.getElementById('prompt-' + gemId);
+  const toggleText = document.getElementById('toggle-text-' + gemId);
+
+  if (promptDiv.classList.contains('expanded')) {
+    promptDiv.classList.remove('expanded');
+    toggleText.textContent = 'Show Full Prompt';
+  } else {
+    promptDiv.classList.add('expanded');
+    toggleText.textContent = 'Hide Full Prompt';
+  }
+}
+
+/**
+ * Open shared gem URL in new tab
+ */
+function openGemUrl(url) {
+  window.open(url, '_blank');
+}
+
+/**
+ * Open add modal
+ */
+function openAddModal() {
+  document.getElementById('modalTitle').textContent = 'Add New Gem';
+  document.getElementById('gemForm').reset();
+  document.getElementById('gemId').value = '';
+  updateCharCount();
+  clearFileRows();
+  addFileRow();
+  markFormClean();
+  document.getElementById('gemModal').style.display = 'flex';
+}
+
+/**
+ * Open edit modal by gem ID (looks up from allGems array)
+ */
+function editGemById(gemId) {
+  const gem = allGems.find(function(g) { return g.id === gemId; });
+  if (gem) {
+    editGem(gem);
+  } else {
+    showError('Gem not found');
+  }
+}
+
+/**
+ * Open edit modal with pre-filled data
+ */
+function editGem(gem) {
+  document.getElementById('modalTitle').textContent = 'Edit Gem';
+  document.getElementById('gemId').value = gem.id;
+  document.getElementById('title').value = gem.title;
+  document.getElementById('shortDescription').value = gem.shortDescription;
+  document.getElementById('version').value = gem.version;
+  document.getElementById('fullPrompt').value = gem.fullPrompt;
+  document.getElementById('sharedUrl').value = gem.sharedUrl;
+  updateCharCount();
+
+  // Populate file rows
+  clearFileRows();
+  if (gem.files && gem.files.length > 0) {
+    gem.files.forEach(function(file) {
+      addFileRow(file.name, file.link);
+    });
+  } else {
+    addFileRow();
+  }
+
+  markFormClean();
+  document.getElementById('gemModal').style.display = 'flex';
+}
+
+/**
+ * Close modal
+ */
+function closeModal() {
+  // Check for unsaved changes
+  if (formIsDirty) {
+    if (!confirm('You have unsaved changes. Are you sure you want to close?')) {
+      return;
+    }
+  }
+
+  document.getElementById('gemModal').style.display = 'none';
+  document.getElementById('gemForm').reset();
+  document.getElementById('gemId').value = '';
+  clearFileRows();
+  markFormClean();
+}
+
+/**
+ * Handle form submit
+ */
+function handleSubmit(event) {
+  event.preventDefault();
+
+  const gemId = document.getElementById('gemId').value;
+  const files = collectFilesData();
+
+  const gemData = {
+    title: document.getElementById('title').value.trim(),
+    shortDescription: document.getElementById('shortDescription').value.trim(),
+    version: document.getElementById('version').value.trim(),
+    fullPrompt: document.getElementById('fullPrompt').value.trim(),
+    sharedUrl: document.getElementById('sharedUrl').value.trim(),
+    files: files
+  };
+
+  // Validate required fields
+  if (!gemData.title || !gemData.shortDescription || !gemData.version ||
+      !gemData.fullPrompt || !gemData.sharedUrl) {
+    showError('All fields are required');
+    return;
+  }
+
+  // Validate file URLs
+  for (let i = 0; i < files.length; i++) {
+    if (!isValidUrl(files[i].link)) {
+      showError('Invalid URL for file "' + files[i].name + '". Please enter a valid http:// or https:// URL.');
+      return;
+    }
+  }
+
+  showLoading();
+
+  if (gemId) {
+    // Update existing gem
+    google.script.run
+      .withSuccessHandler(function(response) {
+        hideLoading();
+        if (response.success) {
+          markFormClean();
+          closeModal();
+          showSuccess('Gem updated successfully!');
+          loadGems();
+        } else {
+          showError('Failed to update gem: ' + response.error);
+        }
+      })
+      .withFailureHandler(function(error) {
+        hideLoading();
+        handleError(error);
+      })
+      .updateGem(parseInt(gemId), gemData);
+  } else {
+    // Create new gem
+    google.script.run
+      .withSuccessHandler(function(response) {
+        hideLoading();
+        if (response.success) {
+          markFormClean();
+          closeModal();
+          showSuccess('Gem created successfully!');
+          loadGems();
+        } else {
+          showError('Failed to create gem: ' + response.error);
+        }
+      })
+      .withFailureHandler(function(error) {
+        hideLoading();
+        handleError(error);
+      })
+      .createGem(gemData);
+  }
+}
+
+/**
+ * Confirm and delete gem
+ */
+function confirmDelete(gemId, gemTitle) {
+  if (confirm('Are you sure you want to delete "' + gemTitle + '"? This action cannot be undone.')) {
+    deleteGem(gemId);
+  }
+}
+
+/**
+ * Delete gem
+ */
+function deleteGem(gemId) {
+  showLoading();
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      hideLoading();
+      if (response.success) {
+        showSuccess('Gem deleted successfully!');
+        loadGems();
+      } else {
+        showError('Failed to delete gem: ' + response.error);
+      }
+    })
+    .withFailureHandler(function(error) {
+      hideLoading();
+      handleError(error);
+    })
+    .deleteGem(gemId);
+}
+
+/**
+ * Show loading overlay
+ */
+function showLoading() {
+  document.getElementById('loadingOverlay').style.display = 'flex';
+}
+
+/**
+ * Hide loading overlay
+ */
+function hideLoading() {
+  document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+/**
+ * Show success message
+ */
+function showSuccess(message) {
+  const banner = document.getElementById('messageBanner');
+  banner.textContent = message;
+  banner.className = 'message-banner success';
+  banner.style.display = 'block';
+
+  setTimeout(function() {
+    banner.style.display = 'none';
+  }, 3000);
+}
+
+/**
+ * Show error message
+ */
+function showError(message) {
+  const banner = document.getElementById('messageBanner');
+  banner.textContent = message;
+  banner.className = 'message-banner error';
+  banner.style.display = 'block';
+
+  setTimeout(function() {
+    banner.style.display = 'none';
+  }, 5000);
+}
+
+/**
+ * Handle server errors
+ */
+function handleError(error) {
+  console.error('Error:', error);
+  showError('An error occurred: ' + (error.message || error.toString()));
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * Mark form as dirty (has unsaved changes)
+ */
+function markFormDirty() {
+  formIsDirty = true;
+}
+
+/**
+ * Mark form as clean (no unsaved changes)
+ */
+function markFormClean() {
+  formIsDirty = false;
+}
+
+/**
+ * Validate URL format
+ */
+function isValidUrl(string) {
+  try {
+    const url = new URL(string);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Export all gems as CSV
+ */
+function exportAsCSV() {
+  if (!allGems || allGems.length === 0) {
+    showError('No gems to export');
+    return;
+  }
+
+  // CSV headers
+  const headers = ['Title', 'Version', 'Short Description', 'Full Prompt', 'Shared URL', 'Created By', 'Created Date', 'Last Edited By', 'Last Edited Date', 'Files'];
+
+  // Convert gems to CSV rows
+  const rows = allGems.map(function(gem) {
+    const filesStr = gem.files && gem.files.length > 0
+      ? gem.files.map(function(f) { return f.name + ': ' + f.link; }).join('; ')
+      : '';
+
+    return [
+      escapeCsvField(gem.title),
+      escapeCsvField(gem.version),
+      escapeCsvField(gem.shortDescription),
+      escapeCsvField(gem.fullPrompt),
+      escapeCsvField(gem.sharedUrl),
+      escapeCsvField(gem.createdBy),
+      gem.createdDate,
+      escapeCsvField(gem.lastEditedBy),
+      gem.lastEditedDate,
+      escapeCsvField(filesStr)
+    ].join(',');
+  });
+
+  const csv = [headers.join(',')].concat(rows).join('\n');
+  downloadFile(csv, 'gemini-gems-catalog.csv', 'text/csv');
+  showSuccess('Gems exported as CSV');
+}
+
+/**
+ * Export all gems as JSON
+ */
+function exportAsJSON() {
+  if (!allGems || allGems.length === 0) {
+    showError('No gems to export');
+    return;
+  }
+
+  const json = JSON.stringify(allGems, null, 2);
+  downloadFile(json, 'gemini-gems-catalog.json', 'application/json');
+  showSuccess('Gems exported as JSON');
+}
+
+/**
+ * Escape CSV field (handle commas, quotes, newlines)
+ */
+function escapeCsvField(field) {
+  if (field == null) return '';
+  const str = String(field);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+/**
+ * Download file to user's computer
+ */
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', init);
+</script>

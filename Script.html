@@ -1,0 +1,1026 @@
+<script>
+/**
+ * Script.html - Client-Side JavaScript
+ * User interactions and server communication
+ */
+
+// Global variables
+let currentUser = null;
+let allGems = [];
+let currentFilter = 'all'; // 'all', 'gem', 'notebook'
+let fileRowCount = 0;
+let formIsDirty = false;
+
+/**
+ * Initialize the application
+ */
+function init() {
+  console.log('Initializing HPBU PMM Gem and Notebook Catalog...');
+
+  // Get current user with permissions
+  google.script.run
+    .withSuccessHandler(function(user) {
+      currentUser = user;
+      console.log('Current user:', currentUser.email, 'Admin:', currentUser.isAdmin);
+
+      // Show admin settings button only for admins
+      if (currentUser && currentUser.isAdmin) {
+        document.getElementById('adminSettingsBtn').style.display = 'inline-flex';
+      }
+
+      loadGems();
+    })
+    .withFailureHandler(handleError)
+    .getCurrentUserWithPermissions();
+
+  // Set up event listeners
+  document.getElementById('addGemBtn').addEventListener('click', openAddModal);
+  document.getElementById('addFirstGemBtn').addEventListener('click', openAddModal);
+  document.getElementById('exportCsvBtn').addEventListener('click', exportAsCSV);
+  document.getElementById('exportJsonBtn').addEventListener('click', exportAsJSON);
+  document.getElementById('modalBackdrop').addEventListener('click', closeModal);
+  document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+  document.getElementById('cancelBtn').addEventListener('click', closeModal);
+  document.getElementById('addFileBtn').addEventListener('click', function() { addFileRow(); });
+  document.getElementById('gemForm').addEventListener('submit', handleSubmit);
+  document.getElementById('shortDescription').addEventListener('input', updateCharCount);
+
+  // Entry type change handler
+  document.querySelectorAll('input[name="entryType"]').forEach(radio => {
+    radio.addEventListener('change', handleEntryTypeChange);
+  });
+
+  // Track form changes
+  const formInputs = document.querySelectorAll('#gemForm input, #gemForm textarea');
+  formInputs.forEach(input => {
+    input.addEventListener('input', markFormDirty);
+  });
+
+  // Close modal on escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('gemModal').style.display !== 'none') {
+      closeModal();
+    }
+  });
+
+  // Admin modal event listeners
+  const adminSettingsBtn = document.getElementById('adminSettingsBtn');
+  const adminModalCloseBtn = document.getElementById('adminModalCloseBtn');
+  const adminModalBackdrop = document.getElementById('adminModalBackdrop');
+  const addAdminBtn = document.getElementById('addAdminBtn');
+
+  if (adminSettingsBtn) {
+    adminSettingsBtn.addEventListener('click', openAdminModal);
+  }
+  if (adminModalCloseBtn) {
+    adminModalCloseBtn.addEventListener('click', closeAdminModal);
+  }
+  if (adminModalBackdrop) {
+    adminModalBackdrop.addEventListener('click', closeAdminModal);
+  }
+  if (addAdminBtn) {
+    addAdminBtn.addEventListener('click', addAdminUser);
+  }
+
+  // Filter button event listeners
+  document.getElementById('filterAll').addEventListener('click', () => setFilter('all'));
+  document.getElementById('filterGems').addEventListener('click', () => setFilter('gem'));
+  document.getElementById('filterNotebooks').addEventListener('click', () => setFilter('notebook'));
+
+  // Event delegation for gem card buttons and admin list
+  document.addEventListener('click', function(e) {
+    // Toggle prompt button
+    if (e.target.closest('.toggle-prompt-btn')) {
+      const gemId = parseInt(e.target.closest('.toggle-prompt-btn').dataset.gemId);
+      togglePrompt(gemId);
+    }
+
+    // Try gem/notebook button
+    if (e.target.closest('.try-gem-btn')) {
+      const url = e.target.closest('.try-gem-btn').dataset.url;
+      if (url) {
+        openGemUrl(url);
+      }
+    }
+
+    // Edit gem button
+    if (e.target.closest('.edit-gem-btn')) {
+      const gemId = parseInt(e.target.closest('.edit-gem-btn').dataset.gemId);
+      editGemById(gemId);
+    }
+
+    // Delete gem button
+    if (e.target.closest('.delete-gem-btn')) {
+      const gemId = parseInt(e.target.closest('.delete-gem-btn').dataset.gemId);
+      const gem = allGems.find(g => g.id === gemId);
+      if (gem) {
+        confirmDelete(gemId, gem.title);
+      }
+    }
+
+    // Remove admin button
+    if (e.target.closest('.remove-admin-btn')) {
+      const email = e.target.closest('.remove-admin-btn').dataset.email;
+      removeAdminUser(email);
+    }
+  });
+}
+
+/**
+ * Update character count for short description
+ */
+function updateCharCount() {
+  const textarea = document.getElementById('shortDescription');
+  const count = document.getElementById('descCharCount');
+  count.textContent = textarea.value.length;
+}
+
+/**
+ * Handle entry type change (gem vs notebook)
+ */
+function handleEntryTypeChange() {
+  const entryType = document.querySelector('input[name="entryType"]:checked').value;
+
+  if (entryType === 'gem') {
+    // Show gem fields
+    document.getElementById('versionGroup').style.display = 'block';
+    document.getElementById('fullPromptGroup').style.display = 'block';
+    document.getElementById('sharedUrlGroup').style.display = 'block';
+    document.getElementById('notebookUrlGroup').style.display = 'none';
+
+    // Mark gem fields as required
+    document.getElementById('version').required = true;
+    document.getElementById('fullPrompt').required = true;
+    document.getElementById('sharedUrl').required = true;
+    document.getElementById('notebookUrl').required = false;
+  } else {
+    // Show notebook fields
+    document.getElementById('versionGroup').style.display = 'none';
+    document.getElementById('fullPromptGroup').style.display = 'none';
+    document.getElementById('sharedUrlGroup').style.display = 'none';
+    document.getElementById('notebookUrlGroup').style.display = 'block';
+
+    // Mark notebook fields as required
+    document.getElementById('version').required = false;
+    document.getElementById('fullPrompt').required = false;
+    document.getElementById('sharedUrl').required = false;
+    document.getElementById('notebookUrl').required = true;
+  }
+
+  // Update submit button text based on entry type
+  const submitBtn = document.getElementById('submitBtn');
+  if (submitBtn) {
+    submitBtn.textContent = entryType === 'gem' ? 'Save Gem' : 'Save Notebook';
+  }
+}
+
+/**
+ * Add a file input row
+ */
+function addFileRow(name = '', link = '') {
+  if (fileRowCount >= 10) {
+    showError('Maximum 10 files allowed per gem');
+    return;
+  }
+
+  fileRowCount++;
+  const container = document.getElementById('filesContainer');
+  const rowId = 'file-row-' + fileRowCount;
+
+  const row = document.createElement('div');
+  row.className = 'file-row';
+  row.id = rowId;
+
+  // Escape HTML manually for empty strings to avoid any issues
+  const escapedName = name ? escapeHtml(name) : '';
+  const escapedLink = link ? escapeHtml(link) : '';
+
+  row.innerHTML = '<input type="text" class="file-name" placeholder="File name" value="' + escapedName + '">' +
+    '<input type="url" class="file-link" placeholder="https://..." value="' + escapedLink + '">' +
+    '<button type="button" class="btn btn-danger btn-small file-remove-btn">×</button>';
+
+  container.appendChild(row);
+
+  // Add input listeners to track changes
+  const inputs = row.querySelectorAll('input');
+  inputs.forEach(input => {
+    input.addEventListener('input', markFormDirty);
+  });
+
+  // Add remove button listener
+  const removeBtn = row.querySelector('.file-remove-btn');
+  removeBtn.addEventListener('click', function() {
+    removeFileRow(rowId);
+  });
+
+  updateAddFileButton();
+}
+
+/**
+ * Remove a file input row
+ */
+function removeFileRow(rowId) {
+  const row = document.getElementById(rowId);
+  if (row) {
+    row.remove();
+    fileRowCount--;
+    updateAddFileButton();
+    markFormDirty();
+  }
+}
+
+/**
+ * Update Add File button visibility
+ */
+function updateAddFileButton() {
+  const btn = document.getElementById('addFileBtn');
+  btn.style.display = fileRowCount >= 10 ? 'none' : 'inline-flex';
+}
+
+/**
+ * Clear all file rows
+ */
+function clearFileRows() {
+  document.getElementById('filesContainer').innerHTML = '';
+  fileRowCount = 0;
+  updateAddFileButton();
+}
+
+/**
+ * Collect files data from form
+ */
+function collectFilesData() {
+  const files = [];
+  const rows = document.querySelectorAll('.file-row');
+
+  rows.forEach(row => {
+    const name = row.querySelector('.file-name').value.trim();
+    const link = row.querySelector('.file-link').value.trim();
+
+    if (name && link) {
+      files.push({ name, link });
+    }
+  });
+
+  return files;
+}
+
+/**
+ * Load all gems from the server
+ */
+function loadGems() {
+  showLoading();
+  console.log('Loading gems...');
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      hideLoading();
+      if (response.success) {
+        allGems = response.data;
+        console.log('Loaded', allGems.length, 'gems');
+        // Reset filter to 'all' when loading fresh data
+        currentFilter = 'all';
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+          btn.classList.remove('filter-btn-active');
+        });
+        document.getElementById('filterAll').classList.add('filter-btn-active');
+
+        const filteredGems = getFilteredGems();
+        renderGems(filteredGems);
+      } else {
+        showError('Failed to load gems: ' + response.error);
+      }
+    })
+    .withFailureHandler(function(error) {
+      hideLoading();
+      handleError(error);
+    })
+    .getAllGems();
+}
+
+/**
+ * Render all gems to the grid
+ */
+function renderGems(gems) {
+  const gemsGrid = document.getElementById('gemsGrid');
+  const emptyState = document.getElementById('emptyState');
+  const filterControls = document.getElementById('filterControls');
+
+  if (!allGems || allGems.length === 0) {
+    // No items at all - hide everything
+    gemsGrid.innerHTML = '';
+    emptyState.style.display = 'block';
+    filterControls.style.display = 'none';
+    return;
+  }
+
+  // Have items, show filter controls
+  filterControls.style.display = 'flex';
+  updateFilterCount();
+
+  if (!gems || gems.length === 0) {
+    // Filtered to zero items
+    gemsGrid.innerHTML = '<div class="no-results">No items match this filter. Try selecting a different filter.</div>';
+    emptyState.style.display = 'none';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  gemsGrid.innerHTML = gems.map(gem => createGemCard(gem)).join('');
+}
+
+/**
+ * Get filtered gems based on current filter
+ */
+function getFilteredGems() {
+  if (currentFilter === 'all') {
+    return allGems;
+  }
+  return allGems.filter(gem => {
+    const entryType = gem.entryType || 'gem';
+    return entryType === currentFilter;
+  });
+}
+
+/**
+ * Set current filter and re-render
+ */
+function setFilter(filter) {
+  currentFilter = filter;
+
+  // Update button states
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.remove('filter-btn-active');
+  });
+
+  const activeBtn = document.querySelector('.filter-btn[data-filter="' + filter + '"]');
+  if (activeBtn) {
+    activeBtn.classList.add('filter-btn-active');
+  }
+
+  // Re-render with filtered data
+  const filteredGems = getFilteredGems();
+  renderGems(filteredGems);
+  updateFilterCount();
+}
+
+/**
+ * Update filter count display
+ */
+function updateFilterCount() {
+  const filteredGems = getFilteredGems();
+  document.getElementById('filteredCount').textContent = filteredGems.length;
+  document.getElementById('totalCount').textContent = allGems.length;
+}
+
+/**
+ * Create HTML for a single entry card (gem or notebook)
+ */
+function createGemCard(gem) {
+  const createdDate = new Date(gem.createdDate).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+
+  // Determine entry type (default to 'gem' for backward compatibility)
+  const isGem = !gem.entryType || gem.entryType === 'gem';
+  const typeBadgeText = isGem ? 'GEM' : 'NOTEBOOK';
+  const typeBadgeClass = isGem ? 'type-badge-gem' : 'type-badge-notebook';
+
+  // Build version badge (only for gems)
+  let versionBadgeHtml = '';
+  if (isGem && gem.version) {
+    versionBadgeHtml = '<span class="gem-version-badge">' + escapeHtml(gem.version) + '</span>';
+  }
+
+  // Build files HTML
+  let filesHtml = '';
+  if (gem.files && gem.files.length > 0) {
+    const fileItems = gem.files.map(function(file) {
+      return '<li><a href="' + escapeHtml(file.link) + '" target="_blank">' + escapeHtml(file.name) + '</a></li>';
+    }).join('');
+    filesHtml = '<div class="files-display"><h4>Files Used:</h4><ul class="files-list">' + fileItems + '</ul></div>';
+  }
+
+  // Build details content based on type
+  let detailsHtml = '';
+  if (isGem && gem.fullPrompt) {
+    detailsHtml = '<pre>' + escapeHtml(gem.fullPrompt) + '</pre>';
+  } else if (!isGem && gem.notebookUrl) {
+    detailsHtml = '<p class="notebook-url-preview">NotebookLM: <a href="' + escapeHtml(gem.notebookUrl) + '" target="_blank">Open Notebook</a></p>';
+  }
+
+  // Determine button text and URL
+  const detailsButtonText = isGem ? 'Show Full Prompt' : 'Show Details';
+  const tryButtonText = isGem ? 'Try Now' : 'Open Notebook';
+  const tryButtonUrl = isGem ? gem.sharedUrl : gem.notebookUrl;
+
+  // Build card HTML using string concatenation
+  let html = '<div class="gem-card" data-gem-id="' + gem.id + '" data-entry-type="' + (gem.entryType || 'gem') + '">';
+  html += '<div class="gem-card-header">';
+  html += '<span class="entry-type-badge ' + typeBadgeClass + '">' + typeBadgeText + '</span>';
+  html += '<h3 class="gem-card-title">' + escapeHtml(gem.title) + '</h3>';
+  html += versionBadgeHtml;
+  html += '</div>';
+  html += '<div class="gem-meta">Created by ' + escapeHtml(gem.createdBy) + ' on ' + createdDate + '</div>';
+  html += '<p class="gem-description">' + escapeHtml(gem.shortDescription) + '</p>';
+  html += '<div class="gem-prompt" id="prompt-' + gem.id + '">';
+  html += detailsHtml;
+  html += filesHtml;
+  html += '</div>';
+  html += '<div class="gem-actions">';
+  html += '<button class="btn btn-secondary btn-small toggle-prompt-btn" data-gem-id="' + gem.id + '">';
+  html += '<span id="toggle-text-' + gem.id + '">' + detailsButtonText + '</span>';
+  html += '</button>';
+  html += '<button class="btn btn-primary btn-small try-gem-btn" data-gem-id="' + gem.id + '" data-url="' + escapeHtml(tryButtonUrl) + '">' + tryButtonText + '</button>';
+
+  // Only show edit button if user can edit
+  if (canUserEdit(gem)) {
+    html += '<button class="btn btn-secondary btn-small edit-gem-btn" data-gem-id="' + gem.id + '">Edit</button>';
+  }
+
+  // Only show delete button for creators and admins
+  if (canUserEdit(gem)) {
+    html += '<button class="btn btn-danger btn-small delete-gem-btn" data-gem-id="' + gem.id + '">Delete</button>';
+  }
+
+  html += '</div>';
+  html += '</div>';
+
+  return html;
+}
+
+/**
+ * Toggle full prompt/details visibility
+ */
+function togglePrompt(gemId) {
+  const promptDiv = document.getElementById('prompt-' + gemId);
+  const toggleText = document.getElementById('toggle-text-' + gemId);
+  const card = document.querySelector('.gem-card[data-gem-id="' + gemId + '"]');
+  const entryType = card ? card.dataset.entryType : 'gem';
+  const isGem = !entryType || entryType === 'gem';
+
+  if (promptDiv.classList.contains('expanded')) {
+    promptDiv.classList.remove('expanded');
+    toggleText.textContent = isGem ? 'Show Full Prompt' : 'Show Details';
+  } else {
+    promptDiv.classList.add('expanded');
+    toggleText.textContent = isGem ? 'Hide Full Prompt' : 'Hide Details';
+  }
+}
+
+/**
+ * Open shared gem URL in new tab
+ */
+function openGemUrl(url) {
+  window.open(url, '_blank');
+}
+
+/**
+ * Open add modal
+ */
+function openAddModal() {
+  document.getElementById('modalTitle').textContent = 'Add New Entry';
+  document.getElementById('gemForm').reset();
+  document.getElementById('gemId').value = '';
+
+  // Default to gem type
+  document.querySelector('input[name="entryType"][value="gem"]').checked = true;
+  handleEntryTypeChange();
+
+  updateCharCount();
+  clearFileRows();
+  addFileRow();
+  markFormClean();
+  document.getElementById('gemModal').style.display = 'flex';
+}
+
+/**
+ * Open edit modal by gem ID (looks up from allGems array)
+ */
+function editGemById(gemId) {
+  const gem = allGems.find(g => g.id === gemId);
+  if (!gem) {
+    showError('Gem not found');
+    return;
+  }
+
+  // Check permissions before opening edit modal
+  if (!canUserEdit(gem)) {
+    showError('You do not have permission to edit this entry. Only the creator or administrators can edit entries.');
+    return;
+  }
+
+  editGem(gem);
+}
+
+/**
+ * Open edit modal with pre-filled data
+ */
+function editGem(gem) {
+  const isGem = !gem.entryType || gem.entryType === 'gem';
+  document.getElementById('modalTitle').textContent = isGem ? 'Edit Gem' : 'Edit Notebook';
+  document.getElementById('gemId').value = gem.id;
+
+  // Set entry type
+  const entryTypeValue = gem.entryType || 'gem';
+  document.querySelector('input[name="entryType"][value="' + entryTypeValue + '"]').checked = true;
+  handleEntryTypeChange();
+
+  // Set common fields
+  document.getElementById('title').value = gem.title;
+  document.getElementById('shortDescription').value = gem.shortDescription;
+
+  // Set type-specific fields
+  if (isGem) {
+    document.getElementById('version').value = gem.version || '';
+    document.getElementById('fullPrompt').value = gem.fullPrompt || '';
+    document.getElementById('sharedUrl').value = gem.sharedUrl || '';
+  } else {
+    document.getElementById('notebookUrl').value = gem.notebookUrl || '';
+  }
+
+  updateCharCount();
+
+  // Populate file rows
+  clearFileRows();
+  if (gem.files && gem.files.length > 0) {
+    gem.files.forEach(file => {
+      addFileRow(file.name, file.link);
+    });
+  } else {
+    addFileRow();
+  }
+
+  markFormClean();
+  document.getElementById('gemModal').style.display = 'flex';
+}
+
+/**
+ * Close modal
+ */
+function closeModal() {
+  // Check for unsaved changes
+  if (formIsDirty) {
+    if (!confirm('You have unsaved changes. Are you sure you want to close?')) {
+      return; // Don't close if user cancels
+    }
+  }
+
+  document.getElementById('gemModal').style.display = 'none';
+  document.getElementById('gemForm').reset();
+  document.getElementById('gemId').value = '';
+  clearFileRows();
+  markFormClean();
+}
+
+/**
+ * Handle form submit
+ */
+function handleSubmit(event) {
+  event.preventDefault();
+
+  const gemId = document.getElementById('gemId').value;
+  const entryType = document.querySelector('input[name="entryType"]:checked').value;
+  const files = collectFilesData();
+
+  const gemData = {
+    entryType: entryType,
+    title: document.getElementById('title').value.trim(),
+    shortDescription: document.getElementById('shortDescription').value.trim(),
+    files: files
+  };
+
+  // Add type-specific fields
+  if (entryType === 'gem') {
+    gemData.version = document.getElementById('version').value.trim();
+    gemData.fullPrompt = document.getElementById('fullPrompt').value.trim();
+    gemData.sharedUrl = document.getElementById('sharedUrl').value.trim();
+
+    if (!gemData.version || !gemData.fullPrompt || !gemData.sharedUrl) {
+      showError('All gem fields are required');
+      return;
+    }
+  } else {
+    gemData.notebookUrl = document.getElementById('notebookUrl').value.trim();
+
+    if (!gemData.notebookUrl) {
+      showError('NotebookLM URL is required');
+      return;
+    }
+  }
+
+  // Validate common required fields
+  if (!gemData.title || !gemData.shortDescription) {
+    showError('Title and description are required');
+    return;
+  }
+
+  // Validate file URLs
+  for (let i = 0; i < files.length; i++) {
+    if (!isValidUrl(files[i].link)) {
+      showError('Invalid URL for file "' + files[i].name + '". Please enter a valid http:// or https:// URL.');
+      return;
+    }
+  }
+
+  showLoading();
+
+  const successMessage = entryType === 'gem' ? 'Gem' : 'Notebook';
+
+  if (gemId) {
+    // Update existing entry
+    google.script.run
+      .withSuccessHandler(function(response) {
+        hideLoading();
+        if (response.success) {
+          markFormClean();
+          closeModal();
+          showSuccess(successMessage + ' updated successfully!');
+          loadGems();
+        } else {
+          showError('Failed to update ' + successMessage.toLowerCase() + ': ' + response.error);
+        }
+      })
+      .withFailureHandler(function(error) {
+        hideLoading();
+        handleError(error);
+      })
+      .updateGem(parseInt(gemId), gemData);
+  } else {
+    // Create new entry
+    google.script.run
+      .withSuccessHandler(function(response) {
+        hideLoading();
+        if (response.success) {
+          markFormClean();
+          closeModal();
+          showSuccess(successMessage + ' created successfully!');
+          loadGems();
+        } else {
+          showError('Failed to create ' + successMessage.toLowerCase() + ': ' + response.error);
+        }
+      })
+      .withFailureHandler(function(error) {
+        hideLoading();
+        handleError(error);
+      })
+      .createGem(gemData);
+  }
+}
+
+/**
+ * Confirm and delete gem
+ */
+function confirmDelete(gemId, gemTitle) {
+  if (confirm('Are you sure you want to delete "' + gemTitle + '"? This action cannot be undone.')) {
+    deleteGem(gemId);
+  }
+}
+
+/**
+ * Delete gem
+ */
+function deleteGem(gemId) {
+  showLoading();
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      hideLoading();
+      if (response.success) {
+        showSuccess('Gem deleted successfully!');
+        loadGems();
+      } else {
+        showError('Failed to delete gem: ' + response.error);
+      }
+    })
+    .withFailureHandler(function(error) {
+      hideLoading();
+      handleError(error);
+    })
+    .deleteGem(gemId);
+}
+
+/**
+ * Show loading overlay
+ */
+function showLoading() {
+  document.getElementById('loadingOverlay').style.display = 'flex';
+}
+
+/**
+ * Hide loading overlay
+ */
+function hideLoading() {
+  document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+/**
+ * Show success message
+ */
+function showSuccess(message) {
+  const banner = document.getElementById('messageBanner');
+  banner.textContent = message;
+  banner.className = 'message-banner success';
+  banner.style.display = 'block';
+
+  setTimeout(() => {
+    banner.style.display = 'none';
+  }, 3000);
+}
+
+/**
+ * Show error message
+ */
+function showError(message) {
+  const banner = document.getElementById('messageBanner');
+  banner.textContent = message;
+  banner.className = 'message-banner error';
+  banner.style.display = 'block';
+
+  setTimeout(() => {
+    banner.style.display = 'none';
+  }, 5000);
+}
+
+/**
+ * Handle server errors
+ */
+function handleError(error) {
+  console.error('Error:', error);
+  showError('An error occurred: ' + error.message || error.toString());
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * Mark form as dirty (has unsaved changes)
+ */
+function markFormDirty() {
+  formIsDirty = true;
+}
+
+/**
+ * Mark form as clean (no unsaved changes)
+ */
+function markFormClean() {
+  formIsDirty = false;
+}
+
+/**
+ * Validate URL format
+ */
+function isValidUrl(string) {
+  try {
+    const url = new URL(string);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Export all gems as CSV
+ */
+function exportAsCSV() {
+  if (!allGems || allGems.length === 0) {
+    showError('No gems to export');
+    return;
+  }
+
+  // CSV headers
+  const headers = ['Title', 'Version', 'Short Description', 'Full Prompt', 'Shared URL', 'Created By', 'Created Date', 'Last Edited By', 'Last Edited Date', 'Files'];
+
+  // Convert gems to CSV rows
+  const rows = allGems.map(gem => {
+    const filesStr = gem.files && gem.files.length > 0
+      ? gem.files.map(f => f.name + ': ' + f.link).join('; ')
+      : '';
+
+    return [
+      escapeCsvField(gem.title),
+      escapeCsvField(gem.version),
+      escapeCsvField(gem.shortDescription),
+      escapeCsvField(gem.fullPrompt),
+      escapeCsvField(gem.sharedUrl),
+      escapeCsvField(gem.createdBy),
+      gem.createdDate,
+      escapeCsvField(gem.lastEditedBy),
+      gem.lastEditedDate,
+      escapeCsvField(filesStr)
+    ].join(',');
+  });
+
+  const csv = [headers.join(','), ...rows].join('\n');
+  downloadFile(csv, 'gemini-gems-catalog.csv', 'text/csv');
+  showSuccess('Gems exported as CSV');
+}
+
+/**
+ * Export all gems as JSON
+ */
+function exportAsJSON() {
+  if (!allGems || allGems.length === 0) {
+    showError('No gems to export');
+    return;
+  }
+
+  const json = JSON.stringify(allGems, null, 2);
+  downloadFile(json, 'gemini-gems-catalog.json', 'application/json');
+  showSuccess('Gems exported as JSON');
+}
+
+/**
+ * Escape CSV field (handle commas, quotes, newlines)
+ */
+function escapeCsvField(field) {
+  if (field == null) return '';
+  const str = String(field);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+/**
+ * Download file to user's computer
+ */
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Open admin settings modal
+ */
+function openAdminModal() {
+  loadAdminList();
+  document.getElementById('adminModal').style.display = 'flex';
+}
+
+/**
+ * Close admin settings modal
+ */
+function closeAdminModal() {
+  document.getElementById('adminModal').style.display = 'none';
+  document.getElementById('newAdminEmail').value = '';
+}
+
+/**
+ * Load and display admin list
+ */
+function loadAdminList() {
+  showLoading();
+
+  google.script.run
+    .withSuccessHandler(function(adminList) {
+      hideLoading();
+      renderAdminList(adminList);
+    })
+    .withFailureHandler(function(error) {
+      hideLoading();
+      handleError(error);
+    })
+    .getAdminList();
+}
+
+/**
+ * Render admin list
+ */
+function renderAdminList(adminList) {
+  const container = document.getElementById('adminListContainer');
+
+  if (!adminList || adminList.length === 0) {
+    container.innerHTML = '<p style="color: var(--rh-gray-500); font-style: italic;">No admins configured</p>';
+    return;
+  }
+
+  let html = '<ul class="admin-list">';
+  adminList.forEach(function(email) {
+    const isCurrentUser = currentUser && currentUser.email === email;
+    html += '<li class="admin-list-item">';
+    html += '<span>' + escapeHtml(email);
+    if (isCurrentUser) {
+      html += ' <span style="color: var(--rh-teal); font-size: 0.875rem;">(you)</span>';
+    }
+    html += '</span>';
+
+    // Don't allow removing yourself if you're the only admin
+    if (!isCurrentUser || adminList.length > 1) {
+      html += '<button class="btn btn-danger btn-small remove-admin-btn" data-email="' + escapeHtml(email) + '">Remove</button>';
+    }
+    html += '</li>';
+  });
+  html += '</ul>';
+
+  container.innerHTML = html;
+}
+
+/**
+ * Add admin
+ */
+function addAdminUser() {
+  const email = document.getElementById('newAdminEmail').value.trim();
+
+  if (!email) {
+    showError('Please enter an email address');
+    return;
+  }
+
+  // Basic email validation
+  if (!isValidEmail(email)) {
+    showError('Please enter a valid email address');
+    return;
+  }
+
+  showLoading();
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      hideLoading();
+      if (response.success) {
+        showSuccess('Admin added successfully');
+        document.getElementById('newAdminEmail').value = '';
+        renderAdminList(response.data.admins);
+      } else {
+        showError(response.error);
+      }
+    })
+    .withFailureHandler(function(error) {
+      hideLoading();
+      handleError(error);
+    })
+    .addAdmin(email);
+}
+
+/**
+ * Remove admin
+ */
+function removeAdminUser(email) {
+  if (!confirm('Remove ' + email + ' from admin list?')) {
+    return;
+  }
+
+  showLoading();
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      hideLoading();
+      if (response.success) {
+        showSuccess('Admin removed successfully');
+        renderAdminList(response.data.admins);
+      } else {
+        showError(response.error);
+      }
+    })
+    .withFailureHandler(function(error) {
+      hideLoading();
+      handleError(error);
+    })
+    .removeAdmin(email);
+}
+
+/**
+ * Validate email format
+ */
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/**
+ * Check if current user can edit a gem
+ * @param {Object} gem - The gem object
+ * @return {boolean} True if user can edit (is creator or admin)
+ */
+function canUserEdit(gem) {
+  if (!currentUser) {
+    return false;
+  }
+
+  // Admins can edit anything
+  if (currentUser.isAdmin) {
+    return true;
+  }
+
+  // Creator can edit their own entry
+  return currentUser.email.toLowerCase() === gem.createdBy.toLowerCase();
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', init);
+</script>
