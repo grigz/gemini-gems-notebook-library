@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HPBU PMM Gem and Notebook Catalog</title>
+  <?!= include('Styles'); ?>
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <h1>HPBU PMM Gem and Notebook Catalog</h1>
+      <div class="header-buttons">
+        <button id="addGemBtn" class="btn btn-primary">+ Add New Item</button>
+        <button id="adminSettingsBtn" class="btn btn-secondary" style="display: none;">⚙ Admin Settings</button>
+        <button id="exportCsvBtn" class="btn btn-secondary">Export CSV</button>
+        <button id="exportJsonBtn" class="btn btn-secondary">Export JSON</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-container">
+    <!-- Loading State -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+      <div class="loading-spinner"></div>
+      <p>Loading...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state" style="display: none;">
+      <h2>No items yet</h2>
+      <p>Start building your team's catalog by adding your first gem or notebook!</p>
+      <button id="addFirstGemBtn" class="btn btn-primary">+ Add Your First Item</button>
+    </div>
+
+    <!-- Filter Controls -->
+    <div id="filterControls" class="filter-controls" style="display: none;">
+      <div class="filter-buttons">
+        <button id="filterAll" class="filter-btn filter-btn-active" data-filter="all">
+          All Items
+        </button>
+        <button id="filterGems" class="filter-btn" data-filter="gem">
+          Gems Only
+        </button>
+        <button id="filterNotebooks" class="filter-btn" data-filter="notebook">
+          Notebooks Only
+        </button>
+      </div>
+      <div class="filter-count" id="filterCount">
+        Showing <span id="filteredCount">0</span> of <span id="totalCount">0</span> items
+      </div>
+    </div>
+
+    <!-- Gems Grid -->
+    <div id="gemsGrid" class="gems-grid"></div>
+
+    <!-- Message Banner -->
+    <div id="messageBanner" class="message-banner" style="display: none;"></div>
+  </main>
+
+  <!-- Add/Edit Modal -->
+  <div id="gemModal" class="modal" style="display: none;">
+    <div id="modalBackdrop" class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">Add New Gem</h2>
+        <button id="modalCloseBtn" class="modal-close">&times;</button>
+      </div>
+      <form id="gemForm">
+        <input type="hidden" id="gemId" name="gemId">
+
+        <div class="form-group">
+          <label>Entry Type <span class="required">*</span></label>
+          <div class="entry-type-selector">
+            <label class="radio-label">
+              <input type="radio" name="entryType" value="gem" checked>
+              <span>Gemini Gem</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="entryType" value="notebook">
+              <span>NotebookLM</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="title">Title <span class="required">*</span></label>
+          <input
+            type="text"
+            id="title"
+            name="title"
+            required
+            maxlength="100"
+            placeholder="e.g., Marketing Content Writer">
+        </div>
+
+        <div class="form-group">
+          <label for="shortDescription">Short Description <span class="required">*</span></label>
+          <textarea
+            id="shortDescription"
+            name="shortDescription"
+            required
+            maxlength="200"
+            rows="2"
+            placeholder="Brief description shown on the card (max 200 chars)"></textarea>
+          <small class="char-count"><span id="descCharCount">0</span>/200</small>
+        </div>
+
+        <div class="form-group" id="versionGroup">
+          <label for="version">Version <span class="required">*</span></label>
+          <input
+            type="text"
+            id="version"
+            name="version"
+            required
+            maxlength="20"
+            placeholder="e.g., 1.0, v2.1, beta">
+        </div>
+
+        <div class="form-group" id="fullPromptGroup">
+          <label for="fullPrompt">Full Prompt <span class="required">*</span></label>
+          <textarea
+            id="fullPrompt"
+            name="fullPrompt"
+            required
+            rows="10"
+            placeholder="Enter the complete system prompt for this gem..."></textarea>
+          <small>💡 Tip: Copy the full system prompt from your Gemini Gem and paste it here</small>
+        </div>
+
+        <div class="form-group" id="sharedUrlGroup">
+          <label for="sharedUrl">Shared Gem URL <span class="required">*</span></label>
+          <input
+            type="url"
+            id="sharedUrl"
+            name="sharedUrl"
+            required
+            placeholder="https://g.co/gemini/share/...">
+          <small>The shareable link to try this gem in Gemini</small>
+        </div>
+
+        <div class="form-group" id="notebookUrlGroup" style="display: none;">
+          <label for="notebookUrl">NotebookLM URL <span class="required">*</span></label>
+          <input
+            type="url"
+            id="notebookUrl"
+            name="notebookUrl"
+            placeholder="https://notebooklm.google.com/...">
+          <small>The link to your NotebookLM notebook</small>
+        </div>
+
+        <div class="form-group">
+          <label>Files Used (Optional)</label>
+          <small>Add files associated with this gem (max 10). URLs must start with http:// or https://</small>
+          <div id="filesContainer">
+            <!-- File rows will be added here dynamically -->
+          </div>
+          <button type="button" class="btn btn-secondary btn-small" id="addFileBtn">
+            + Add File
+          </button>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" id="cancelBtn" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitBtn">Save Gem</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Admin Settings Modal -->
+  <div id="adminModal" class="modal" style="display: none;">
+    <div id="adminModalBackdrop" class="modal-backdrop"></div>
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>Admin Settings</h2>
+        <button id="adminModalCloseBtn" class="modal-close">&times;</button>
+      </div>
+      <div style="padding: 1.5rem;">
+        <h3 style="margin-bottom: 1rem;">Admin Users</h3>
+        <p style="color: var(--app-gray-700); margin-bottom: 1rem; font-size: 0.875rem;">
+          Users listed below can delete entries from the catalog.
+        </p>
+
+        <div id="adminListContainer" style="margin-bottom: 1.5rem;">
+          <!-- Admin list will be populated here -->
+        </div>
+
+        <div class="form-group">
+          <label for="newAdminEmail">Add New Admin</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input
+              type="email"
+              id="newAdminEmail"
+              placeholder="user@example.com"
+              style="flex: 1;">
+            <button id="addAdminBtn" class="btn btn-primary">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <?!= include('Script'); ?>
+</body>
+</html>

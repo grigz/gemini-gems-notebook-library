@@ -907,7 +907,7 @@ function renderAdminList(adminList) {
   const container = document.getElementById('adminListContainer');
 
   if (!adminList || adminList.length === 0) {
-    container.innerHTML = '<p style="color: var(--rh-gray-500); font-style: italic;">No admins configured</p>';
+    container.innerHTML = '<p style="color: var(--app-gray-500); font-style: italic;">No admins configured</p>';
     return;
   }
 
@@ -917,7 +917,7 @@ function renderAdminList(adminList) {
     html += '<li class="admin-list-item">';
     html += '<span>' + escapeHtml(email);
     if (isCurrentUser) {
-      html += ' <span style="color: var(--rh-teal); font-size: 0.875rem;">(you)</span>';
+      html += ' <span style="color: var(--app-teal); font-size: 0.875rem;">(you)</span>';
     }
     html += '</span>';
 
