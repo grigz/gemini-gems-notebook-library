@@ -15,7 +15,7 @@ This Google Apps Script web application provides a simple, low-friction tool for
 - **Edit Gems:** Update existing gems with preserved audit trail
 - **Delete Gems:** Remove gems with confirmation
 - **Audit Tracking:** Automatic tracking of creator and editor with timestamps
-- **Red Hat Branding:** Custom color palette (teal, orange, purple, yellow)
+- **Custom Branding:** Custom color palette (teal, orange, purple, yellow)
 - **Responsive Design:** Works on desktop, tablet, and mobile
 
 ## Technology Stack
@@ -24,7 +24,7 @@ This Google Apps Script web application provides a simple, low-friction tool for
 - **Data Storage:** Google Sheets
 - **Frontend:** HTML, CSS, Vanilla JavaScript
 - **Authentication:** Google Session API
-- **Design:** Red Hat secondary color palette
+- **Design:** Custom color palette
 
 ## Project Structure
 
@@ -47,7 +47,7 @@ PMM Gem Repo - HPBU/
 ### 1. Prerequisites
 
 - Google account with access to Google Sheets and Apps Script
-- Access to the target Google Sheet: [Gemini Gems Sheet](https://docs.google.com/spreadsheets/d/1vCFfTWfH9I3A0lEVdsZ_X0B0tQpNyAOChzke9w8M7fY/edit?gid=0#gid=0)
+- Access to the target Google Sheet: [Gemini Gems Sheet](YOUR_GOOGLE_SHEET_URL_HERE)
 - Edit permissions on the Google Sheet
 
 ### 2. Setup Google Sheet
@@ -91,7 +91,7 @@ Use the DEPLOYMENT_CHECKLIST.md to verify all functionality works correctly.
 
 ## Color Palette
 
-The app uses the Red Hat secondary color palette:
+The app uses the Custom color palette:
 
 - **Teal (#009596):** Primary actions (Add Gem, Save, Try Now)
 - **Orange (#EC7A08):** Danger actions (Delete), error messages
@@ -131,7 +131,7 @@ All actions are tracked with automatic audit fields (user email and timestamp).
 ### Client-Side (Browser)
 
 - **Index.html:** Page structure, header, grid container, modal form
-- **Styles.html:** CSS with Red Hat colors, responsive grid, card styling
+- **Styles.html:** CSS with custom colors, responsive grid, card styling
 - **Script.html:** JavaScript for rendering, form handling, server communication
 
 ### Data Flow
@@ -241,7 +241,7 @@ This project is intended for internal team use. Modify and adapt as needed for y
 
 ## Credits
 
-- **Design System:** Red Hat secondary color palette
+- **Design System:** Custom color palette
 - **Platform:** Google Apps Script
 - **Storage:** Google Sheets
 - **Built for:** Distributed team collaboration on Gemini gems

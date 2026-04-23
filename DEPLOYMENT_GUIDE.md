@@ -13,14 +13,14 @@ This web app provides a centralized catalog for shared Gemini gems (AI prompts) 
 
 ### Client-Side (.html files)
 - **Index.html** - Main HTML structure
-- **Styles.html** - CSS styling with Red Hat color palette
+- **Styles.html** - CSS styling with custom color palette
 - **Script.html** - Client-side JavaScript
 
 ## Deployment Steps
 
 ### Step 1: Prepare the Google Sheet
 
-1. Open the target Google Sheet: https://docs.google.com/spreadsheets/d/1vCFfTWfH9I3A0lEVdsZ_X0B0tQpNyAOChzke9w8M7fY/edit?gid=0#gid=0
+1. Open the target Google Sheet: YOUR_GOOGLE_SHEET_URL_HERE
 
 2. Ensure the first row contains these headers (in order, columns A-I):
    ```
@@ -116,7 +116,7 @@ This web app provides a centralized catalog for shared Gemini gems (AI prompts) 
 
 2. **Test basic functionality:**
    - [ ] Page loads without errors
-   - [ ] Red Hat color scheme is visible
+   - [ ] Custom color scheme is visible
    - [ ] "Add Gem" button is visible in header
 
 3. **Test adding a gem:**

@@ -12,8 +12,8 @@
  * - Copy the long string between /d/ and /edit
  *
  * Example:
- * If your URL is: https://docs.google.com/spreadsheets/d/1vCFfTWfH9I3A0lEVdsZ_X0B0tQpNyAOChzke9w8M7fY/edit
- * Your Sheet ID is: 1vCFfTWfH9I3A0lEVdsZ_X0B0tQpNyAOChzke9w8M7fY
+ * If your URL is: https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID_HERE/edit
+ * Your Sheet ID is: YOUR_GOOGLE_SHEET_ID_HERE
  */
 
 // Google Sheet ID - REPLACE THIS VALUE

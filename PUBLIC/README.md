@@ -47,7 +47,7 @@ PMM Gem Repo - HPBU/
 ### 1. Prerequisites
 
 - Google account with access to Google Sheets and Apps Script
-- Access to the target Google Sheet: [Gemini Gems Sheet](https://docs.google.com/spreadsheets/d/1vCFfTWfH9I3A0lEVdsZ_X0B0tQpNyAOChzke9w8M7fY/edit?gid=0#gid=0)
+- Access to the target Google Sheet: [Gemini Gems Sheet](YOUR_GOOGLE_SHEET_URL_HERE)
 - Edit permissions on the Google Sheet
 
 ### 2. Setup Google Sheet

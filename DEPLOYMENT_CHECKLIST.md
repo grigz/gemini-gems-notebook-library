@@ -4,7 +4,7 @@ Use this checklist to ensure a smooth deployment of the Gemini Gems Catalog.
 
 ## Pre-Deployment
 
-- [ ] Verify you have access to the Google Sheet: https://docs.google.com/spreadsheets/d/1vCFfTWfH9I3A0lEVdsZ_X0B0tQpNyAOChzke9w8M7fY/edit?gid=0#gid=0
+- [ ] Verify you have access to the Google Sheet: YOUR_GOOGLE_SHEET_URL_HERE
 - [ ] Ensure you have edit permissions on the Google Sheet
 - [ ] Review all files in this directory (Code.gs, AuthService.gs, SheetService.gs, Index.html, Styles.html, Script.html)
 
@@ -68,7 +68,7 @@ Use this checklist to ensure a smooth deployment of the Gemini Gems Catalog.
 - [ ] Page loads without errors
 - [ ] Header displays "Gemini Gems Catalog"
 - [ ] "Add Gem" button visible
-- [ ] Red Hat colors visible (teal, orange, purple)
+- [ ] Custom brand colors visible (teal, orange, purple)
 
 ### Add Gem Test
 
@@ -168,7 +168,7 @@ Your deployment is successful when:
 ✅ You can delete a gem (with confirmation)
 ✅ Audit fields auto-populate correctly
 ✅ "Try Now" button opens shared URLs
-✅ Design uses Red Hat color palette
+✅ Design uses custom color palette
 ✅ App works on desktop and mobile
 
 ---

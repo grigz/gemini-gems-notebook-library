@@ -48,7 +48,7 @@ This Google Apps Script web application provides a catalog system for managing G
 #### 🔴 Hardcoded Credentials
 **File:** \`SheetService.gs:20\`
 \`\`\`javascript
-const SHEET_ID = '1vCFfTWfH9I3A0lEVdsZ_X0B0tQpNyAOChzke9w8M7fY';
+const SHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE';
 \`\`\`
 **Issue:** Spreadsheet ID is hardcoded, making it difficult to deploy to different environments and potentially exposing internal sheet IDs.
 

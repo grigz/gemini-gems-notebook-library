@@ -17,7 +17,7 @@ const COL_FILES = 9;
 const COL_ENTRY_TYPE = 10;
 
 // Google Sheet ID
-const SHEET_ID = '1vCFfTWfH9I3A0lEVdsZ_X0B0tQpNyAOChzke9w8M7fY';
+const SHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE';
 
 /**
  * Get the spreadsheet object
